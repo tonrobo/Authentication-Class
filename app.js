@@ -5,7 +5,11 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-const encrypt = require("mongoose-encryption");
+//const encrypt = require("mongoose-encryption"); Level 2 Security
+// const md5 = require('md5'); : Level 3 Security
+const bcrypt = require("bcrypt"); // Level 4 Security
+const saltRounds = 10; // 10 rounds is good for 2019-2020
+
 
 const app = express();
 
@@ -22,8 +26,7 @@ const userSchema = new mongoose.Schema({
 });
 
 
-userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ['password'] });
-
+//userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ['password'] });
 // ********* It is very important to create the schema, the secret string and plug it into the userSchema BEFORE creating the user model. **************
 
 const User = new mongoose.model("User", userSchema);
@@ -44,22 +47,27 @@ app.get("/register", function(req, res){
 });
 
 app.post("/register", function(req, res){
+  bcrypt.hash(req.body.password, saltRounds, function(err, hash) {
+    // Store hash in your password DB.
+    const newUser = new User({
+      email: req.body.username,
+      password: hash
+    });
+    // save new Users
+    newUser.save(function(err){ //Automagically, Mongoose Encrypt is encrypting the password on Save
+      if(err){
+        console.log(err);
+      } else {
+        res.render("secrets"); //Notice we only give the Secrets route from within the register route.
+      }
+    });
+  });
   //add a new document ( a new User) to the Collection of Users modeled with the Schema.
-  const newUser = new User({
-    email: req.body.username,
-    password: req.body.password
-  });
-  // save new Users
-  newUser.save(function(err){ //Automagically, Mongoose Encrypt is encrypting the password on Save
-    if(err){
-      console.log(err);
-    } else {
-      res.render("secrets"); //Notice we only give the Secrets route from within the register route.
-    }
-  });
+
 });
 
 app.post("/login", function(req, res){
+
   const username = req.body.username;
   const password = req.body.password;
   User.findOne({email: username}, function(err, foundUser){ //Automagically, Mongoose Encrypt is descrypting when we call Find.
@@ -67,10 +75,12 @@ app.post("/login", function(req, res){
       console.log(err); //res.render("register");
     } else {
       if (foundUser){
-        if (foundUser.password === password){
-          res.render("secrets");
-        };
-      } else {
+        bcrypt.compare(password, foundUser.password, function(err, result) {
+            // result == true
+            if (result === true) {
+                res.render("secrets");
+            }
+        });
         res.render("register");
       }
     }
